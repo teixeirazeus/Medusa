@@ -7,7 +7,7 @@
 int main(int argc, char** argv) {
 
   /* Imprime informacao sobre versao e como sair */
-  puts("Medusa Version 0.0.0.0.1");
+  puts("Medusa Version 0.0.0.0.2");
   puts("Press Ctrl+c to Exit\n");
 
   /* Num laco que nunca acaba */

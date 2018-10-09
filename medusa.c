@@ -5,27 +5,95 @@
 #include <editline/readline.h>
 #include <editline/history.h>
 
-/* Operações*/
-long eval_op(long x, char* op, long y) {
-  if (strcmp(op, "+") == 0) { return x + y; }
-  if (strcmp(op, "-") == 0) { return x - y; }
-  if (strcmp(op, "*") == 0) { return x * y; }
-  if (strcmp(op, "/") == 0) { return x / y; }
-  return 0;
+
+//Enumeração para os tipos de erros
+//enum { LERR_DIV_ZERO, LERR_BAD_OP, LERR_BAD_NUM };
+enum { LERR_BAD_OP, LERR_BAD_NUM };
+//Enumeração para as tipos de dado em lval
+enum { LVAL_NUM, LVAL_ERR };
+
+// lval = lisp evaluation
+//Estrutura base para o eval
+typedef struct {
+  int type;
+  long num;
+  int err;
+} lval;
+
+//Numero
+lval lval_num(long x) {
+  lval v;
+  v.type = LVAL_NUM;
+  v.num = x;
+  return v;
 }
 
-long eval(mpc_ast_t* t) {
+//Erro
+lval lval_err(int x) {
+  lval v;
+  v.type = LVAL_ERR;
+  v.err = x;
+  return v;
+}
 
-  /* Se for numero converte com atoi e retorna */
+//imprime a estrutura lval para debug e lidar com erros
+void lval_print(lval v) {
+  switch (v.type) {
+    //Se for um numero, imprima
+    case LVAL_NUM: printf("%li", v.num); break;
+
+    //Se for um erro
+    case LVAL_ERR:
+      //Qual erro?
+      /*
+      if (v.err == LERR_DIV_ZERO) {
+        printf("Error: Division By Zero!");
+      }
+      */
+      if (v.err == LERR_BAD_OP)   {
+        printf("Error: Invalid Operator!");
+      }
+      if (v.err == LERR_BAD_NUM)  {
+        printf("Error: Invalid Number!");
+      }
+    break;
+  }
+}
+
+//Print line do lisp
+void lval_println(lval v) { lval_print(v); putchar('\n'); }
+
+/* Operações*/
+lval eval_op(lval x, char* op, lval y) {
+
+  //Se for erro, retorna o erro
+  if (x.type == LVAL_ERR) return x;
+  if (y.type == LVAL_ERR) return y;
+
+  //Operações
+  if (strcmp(op, "+") == 0) { return lval_num(x.num + y.num); }
+  if (strcmp(op, "-") == 0) { return lval_num(x.num - y.num); }
+  if (strcmp(op, "*") == 0) { return lval_num(x.num * y.num); }
+  if (strcmp(op, "/") == 0) { return (y.num == 0) ?  lval_num(y.num) :  lval_num(x.num / y.num); }
+  if (strcmp(op, "max") == 0) { return (x.num > y.num) ?  lval_num(x.num) :  lval_num(y.num); }
+  if (strcmp(op, "min") == 0) { return (x.num < y.num) ?  lval_num(x.num) :  lval_num(y.num); }
+
+
+  return lval_err(LERR_BAD_OP);
+
+}
+lval eval(mpc_ast_t* t) {
+
+  /* Se for numero converte com atoi(melhorado) e retorna */
   if (strstr(t->tag, "number")) {
-    return atoi(t->contents);
+    errno = 0;
+    long x = strtol(t->contents, NULL, 10);
+    return errno != ERANGE ? lval_num(x) : lval_err(LERR_BAD_NUM);
   }
 
-  /* O operador é sempre o segundo filho  */
-  char* op = t->children[1]->contents;
-
   /* Grava o terceiro filho em `x` */
-  long x = eval(t->children[2]);
+  char* op = t->children[1]->contents;
+  lval x = eval(t->children[2]);
 
   /* Itera os filhos que sobraram e junta */
   int i = 3;
@@ -36,7 +104,6 @@ long eval(mpc_ast_t* t) {
 
   return x;
 }
-
 
 
 int main(int argc, char** argv) {
@@ -50,8 +117,8 @@ int main(int argc, char** argv) {
   /* Definição de expressões regulares */
   mpca_lang(MPCA_LANG_DEFAULT,
     "                                                     \
-      number   : /-?[0-9]+/ ;                             \
-      operator : '+' | '-' | '*' | '/' ;                  \
+      number   : /-?[0-9]+/;                             \
+      operator : '+' | '-' | '*' | '/' | \"max\" | \"min\" ;         \
       expr     : <number> | '(' <operator> <expr>+ ')' ;  \
       atom    : /^/ <operator> <expr>+ /$/ ;             \
     ",
@@ -75,8 +142,8 @@ int main(int argc, char** argv) {
     if (mpc_parse("<stdin>", input, Atom, &r)) {
 
       /*Avalia, imprime, deleta*/
-      long result = eval(r.output);
-      printf("%li\n", result);
+      lval result = eval(r.output);
+      lval_println(result);
       mpc_ast_delete(r.output);
 
     } else {
@@ -89,7 +156,7 @@ int main(int argc, char** argv) {
     free(input);
 
   }
-  
+
   mpc_cleanup(4, Number, Operator, Expr, Atom);
 
   return 0;
